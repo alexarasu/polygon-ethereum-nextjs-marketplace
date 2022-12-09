@@ -26,6 +26,7 @@ contract NFTMarket is ReentrancyGuard {
     address payable seller;
     address payable owner;
     uint256 price;
+    bool sold;
   }
 
   mapping(uint256 => MarketItem) private idToMarketItem;
@@ -36,13 +37,16 @@ contract NFTMarket is ReentrancyGuard {
     uint256 indexed tokenId,
     address seller,
     address owner,
-    uint256 price
+    uint256 price,
+    bool sold
   );
 
-  function getMarketItem(uint256 marketItemId) public view returns (MarketItem memory) {
-    return idToMarketItem[marketItemId];
+  /* Returns the listing price of the contract */
+  function getListingPrice() public view returns (uint256) {
+    return listingPrice;
   }
-
+  
+  /* Places an item for sale on the marketplace */
   function createMarketItem(
     address nftContract,
     uint256 tokenId,
@@ -60,7 +64,8 @@ contract NFTMarket is ReentrancyGuard {
       tokenId,
       payable(msg.sender),
       payable(address(0)),
-      price
+      price,
+      false
     );
 
     IERC721(nftContract).transferFrom(msg.sender, address(this), tokenId);
@@ -71,10 +76,13 @@ contract NFTMarket is ReentrancyGuard {
       tokenId,
       msg.sender,
       address(0),
-      price
+      price,
+      false
     );
   }
 
+  /* Creates the sale of a marketplace item */
+  /* Transfers ownership of the item, as well as funds between parties */
   function createMarketSale(
     address nftContract,
     uint256 itemId
@@ -86,15 +94,12 @@ contract NFTMarket is ReentrancyGuard {
     idToMarketItem[itemId].seller.transfer(msg.value);
     IERC721(nftContract).transferFrom(address(this), msg.sender, tokenId);
     idToMarketItem[itemId].owner = payable(msg.sender);
+    idToMarketItem[itemId].sold = true;
     _itemsSold.increment();
     payable(owner).transfer(listingPrice);
   }
 
-  function fetchMarketItem(uint itemId) public view returns (MarketItem memory) {
-    MarketItem memory item = idToMarketItem[itemId];
-    return item;
-  }
-
+  /* Returns all unsold market items */
   function fetchMarketItems() public view returns (MarketItem[] memory) {
     uint itemCount = _itemIds.current();
     uint unsoldItemCount = _itemIds.current() - _itemsSold.current();
@@ -103,16 +108,16 @@ contract NFTMarket is ReentrancyGuard {
     MarketItem[] memory items = new MarketItem[](unsoldItemCount);
     for (uint i = 0; i < itemCount; i++) {
       if (idToMarketItem[i + 1].owner == address(0)) {
-        uint currentId = idToMarketItem[i + 1].itemId;
+        uint currentId = i + 1;
         MarketItem storage currentItem = idToMarketItem[currentId];
         items[currentIndex] = currentItem;
         currentIndex += 1;
       }
     }
-   
     return items;
   }
 
+  /* Returns onlyl items that a user has purchased */
   function fetchMyNFTs() public view returns (MarketItem[] memory) {
     uint totalItemCount = _itemIds.current();
     uint itemCount = 0;
@@ -127,13 +132,36 @@ contract NFTMarket is ReentrancyGuard {
     MarketItem[] memory items = new MarketItem[](itemCount);
     for (uint i = 0; i < totalItemCount; i++) {
       if (idToMarketItem[i + 1].owner == msg.sender) {
-        uint currentId = idToMarketItem[i + 1].itemId;
+        uint currentId = i + 1;
         MarketItem storage currentItem = idToMarketItem[currentId];
         items[currentIndex] = currentItem;
         currentIndex += 1;
       }
     }
-   
+    return items;
+  }
+
+  /* Returns only items a user has created */
+  function fetchItemsCreated() public view returns (MarketItem[] memory) {
+    uint totalItemCount = _itemIds.current();
+    uint itemCount = 0;
+    uint currentIndex = 0;
+
+    for (uint i = 0; i < totalItemCount; i++) {
+      if (idToMarketItem[i + 1].seller == msg.sender) {
+        itemCount += 1;
+      }
+    }
+
+    MarketItem[] memory items = new MarketItem[](itemCount);
+    for (uint i = 0; i < totalItemCount; i++) {
+      if (idToMarketItem[i + 1].seller == msg.sender) {
+        uint currentId = i + 1;
+        MarketItem storage currentItem = idToMarketItem[currentId];
+        items[currentIndex] = currentItem;
+        currentIndex += 1;
+      }
+    }
     return items;
   }
 }
